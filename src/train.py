@@ -13,6 +13,7 @@ from tqdm import tqdm
 from itertools import count
 from socket import gethostname
 from tokenizers import Tokenizer
+from transformers import AutoTokenizer
 from statistics import mean
 import json
 import math
@@ -628,14 +629,24 @@ def train(model, ema_model, tokenizer, optimizer, scheduler, args):
             # Exit training loop if max steps reached
             if global_step >= args.max_steps:
                 return
-
 def main():
     args = parse_arguments()
-    tokenizer = Tokenizer.from_file(args.tokenizer_path)
+
+    # Load tokenizer from Hugging Face Hub
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path, use_fast=True)
+
+    # Setup training environment (e.g., logging dirs, seed, etc.)
     setup_training(args, tokenizer)
-    # Load dataset and set up wandb
-    train_dataset, args.output_dir, args.name = setup_dataset_and_logging(args, args.model_type, args.seq_length)
+
+    # Load dataset and initialize wandb
+    train_dataset, args.output_dir, args.name = setup_dataset_and_logging(
+        args, args.model_type, args.seq_len
+    )
+
+    # Prepare model, optimizer, EMA, scheduler
     model, ema_model, optimizer, scheduler = prepare_model_and_optimizer(args, tokenizer)
+
+    # Run training loop
     train(model, ema_model, tokenizer, optimizer, scheduler, args)
 
 if __name__ == "__main__":
