@@ -48,7 +48,7 @@ from transformers.utils import (
 )
 
 from huggingface_hub import upload_folder
-
+from datasets import load_dataset
 
 
 """
@@ -274,13 +274,34 @@ def setup_training(args, tokenizer):
         print(f"In total, the model will be trained on 'steps'({args.max_steps:,}) x 'GPUs'({get_world_size()}) x 'batch_size'({args.local_batch_size:,}) x 'seq_len'({args.seq_length:,}) = {args.max_steps * get_world_size() * args.local_batch_size * args.seq_length:,} subword instances")
 
     args.vocab_size = tokenizer.get_vocab_size()
-
-    if is_main_process():
-        wandb.init(
-            name=args.name,
-            project="BabyLM-v2",
-            entity="nor-ret"
-        )
+    dataset = load_dataset(f"TalkingBabies/{args.dataset_name}")
+    print(f"Loading dataset: {dataset}")
+    dataset = dataset.map(lambda x: {"labels": x["input_ids"]}, num_proc=16)
+    train_dataset = dataset["train"]
+    # Sanitize dataset name for file path safety
+    safe_name = args.dataset_name.replace("/", "_")
+    # Handle dry run dataset and output directory
+    if args.dry_run:
+        print("Running in dry_run mode: using only 100 samples")
+        n = min(100, len(train_dataset))
+        train_dataset = train_dataset.select(range(n))
+        output_dir = f"./dryruns/{safe_name}"
+    else:
+        output_dir = f"./checkpoints/{safe_name}"
+    
+    # Create the output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Use dataset name as the run name
+    run_name = safe_name
+    
+    wandb.init(
+        entity="babylm-interaction",
+        project=f"pretrain_{safe_name}",
+        name=run_name,
+        mode="disabled" if args.dry_run else "online",
+    )
+    return train_dataset, output_dir, run_name
 
 # ====================
 # Load Config
@@ -293,16 +314,17 @@ def load_model_config(args):
     return args
 
 
+
 # ====================
 # Model & Optimizer
 # ====================
 def prepare_model_and_optimizer(args):
-    args = load_config(args)
+    args = load_model_config(args)
     model = Bert(args)
 
     if is_main_process():
         n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        wandb.config.update(args)
+        wandb.config.update(args.__dict__)
         wandb.config.update({"n_params": n_params})
         print(model)
         print(f"NUMBER OF PARAMETERS: {n_params}\n", flush=True)
@@ -327,17 +349,17 @@ def prepare_model_and_optimizer(args):
             print(n)
         print(flush=True)
 
-    if args.optimizer == "adam" or args.optimizer == "adamw":
+    if args.optimizer in ["adam", "adamw"]:
         optimizer = torch.optim.AdamW(
             optimizer_grouped_parameters,
-            lr=args.learning_rate,
+            lr=args.lr,
             betas=(args.optimizer_beta1, args.optimizer_beta2),
             eps=args.optimizer_eps,
         )
     elif args.optimizer == "lamb":
         optimizer = Lamb(
             optimizer_grouped_parameters,
-            args.learning_rate,
+            args.lr,
             betas=(args.optimizer_beta1, args.optimizer_beta2),
             eps=args.optimizer_eps,
         )
@@ -353,7 +375,7 @@ def prepare_model_and_optimizer(args):
     model = DistributedDataParallel(
         model,
         device_ids=[args.local_rank],
-        bucket_cap_mb=torch.cuda.get_device_properties(args.device).total_memory,
+        bucket_cap_mb=torch.cuda.get_device_properties(args.device).total_memory // (1024 * 1024),
         broadcast_buffers=False,
         gradient_as_bucket_view=True,
         static_graph=True
@@ -364,7 +386,7 @@ def prepare_model_and_optimizer(args):
         param.requires_grad = False
 
     global_step, epoch = 0, 0
-    if args.checkpoint_filename is not None:
+    if args.checkpoint_filename:
         state_dict = torch.load(args.checkpoint_filename, map_location="cpu")
         model.load_state_dict(state_dict["model"])
         ema_model.load_state_dict(state_dict["ema_model"])
@@ -393,11 +415,20 @@ def get_batch(dataloader, device, global_step):
 
 def parse_arguments():
     import argparse
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Training script for BabyLM models")
 
     # Data
-    parser.add_argument("--data_dir", type=str)
-    parser.add_argument("--tokenizer_path", type=str)
+    # Dataset & Data
+    parser.add_argument(
+    "--dataset_name",
+    type=str,
+    choices=["babylm_gpt-bert-70M_single_shuffle", "kidlm_gpt-bert-70M_single_shuffle", "fineweb_gpt-bert-70M_single_shuffle"],
+    default="babylm_gpt-bert-70M_single_shuffle",
+    help="Choose one of the available datasets for training."
+)
+
+    parser.add_argument("--tokenizer_path", type=str, required=True,
+                        help="Path to tokenizer file")
 
     # Model
     parser.add_argument("--config_file", type=str)
@@ -602,9 +633,9 @@ def main():
     args = parse_arguments()
     tokenizer = Tokenizer.from_file(args.tokenizer_path)
     setup_training(args, tokenizer)
-
+    # Load dataset and set up wandb
+    train_dataset, args.output_dir, args.name = setup_dataset_and_logging(args, args.model_type, args.seq_length)
     model, ema_model, optimizer, scheduler = prepare_model_and_optimizer(args, tokenizer)
-
     train(model, ema_model, tokenizer, optimizer, scheduler, args)
 
 if __name__ == "__main__":
