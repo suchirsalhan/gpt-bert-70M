@@ -632,7 +632,7 @@ def main():
     args = parse_arguments()
 
     # Load tokenizer from Hugging Face Hub
-    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path, use_fast=True)
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path, use_fast=False)
 
     # Setup training environment (e.g., logging dirs, seed, etc.)
     setup_training(args, tokenizer)
