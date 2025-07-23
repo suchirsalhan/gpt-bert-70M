@@ -274,7 +274,7 @@ def setup_training(args, tokenizer):
         print(f"In total, the model will be trained on 'steps'({args.max_steps:,}) x 'GPUs'({get_world_size()}) x 'batch_size'({args.local_batch_size:,}) x 'seq_len'({args.seq_length:,}) = {args.max_steps * get_world_size() * args.local_batch_size * args.seq_length:,} subword instances")
 
     args.vocab_size = tokenizer.get_vocab_size()
-    dataset = load_dataset(f"TalkingBabies/{args.dataset_name}")
+    dataset = load_dataset(f"Talking-Babies/{args.dataset_name}")
     print(f"Loading dataset: {dataset}")
     dataset = dataset.map(lambda x: {"labels": x["input_ids"]}, num_proc=16)
     train_dataset = dataset["train"]
@@ -422,8 +422,8 @@ def parse_arguments():
     parser.add_argument(
     "--dataset_name",
     type=str,
-    choices=["babylm_gpt-bert-70M_single_shuffle", "kidlm_gpt-bert-70M_single_shuffle", "fineweb_gpt-bert-70M_single_shuffle"],
-    default="babylm_gpt-bert-70M_single_shuffle",
+    choices=["sam-babylm", "babylm_gpt-bert-70M_single_shuffle", "kidlm_gpt-bert-70M_single_shuffle", "fineweb_gpt-bert-70M_single_shuffle"],
+    default="sam-babylm",
     help="Choose one of the available datasets for training."
 )
 
