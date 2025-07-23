@@ -27,7 +27,6 @@ from lamb import Lamb
 from model_extra import Bert
 from utils import cosine_schedule_with_warmup_cooldown, is_main_process, get_rank, seed_everything, get_world_size
 from dataset import MaskedDataset, CausalDataset, ValidationDataset
-from model_logging import ModelLogger
 
 
 from transformers import Trainer, TrainingArguments
