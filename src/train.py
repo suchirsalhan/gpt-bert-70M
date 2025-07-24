@@ -422,7 +422,7 @@ def parse_arguments():
     parser.add_argument(
     "--dataset_name",
     type=str,
-    choices=["sam-babylm", "babylm_gpt-bert-70M_single_shuffle", "kidlm_gpt-bert-70M_single_shuffle", "fineweb_gpt-bert-70M_single_shuffle"],
+    choices=["sam-babylm", "babylm_gpt-bert-70M_single_shuffle", "kidlm-70M-cleaned"],
     default="sam-babylm",
     help="Choose one of the available datasets for training."
 )
